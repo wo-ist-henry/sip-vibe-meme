@@ -22,13 +22,18 @@ const MemeEditor: React.FC = () => {
   const [textElements, setTextElements] = useState<TextElement[]>([])
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
   const [canvasSize, setCanvasSize] = useState({ width: 500, height: 400 })
+  
+  // Drag and drop state
+  const [isDragging, setIsDragging] = useState(false)
+  const [draggedTextId, setDraggedTextId] = useState<string | null>(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
 
   const fonts = ['Arial', 'Impact', 'Helvetica', 'Georgia', 'Times New Roman', 'Comic Sans MS']
   const colors = ['#ffffff', '#000000', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff']
 
   useEffect(() => {
     drawCanvas()
-  }, [image, textElements])
+  }, [image, textElements, isDragging, draggedTextId, selectedTextId])
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -74,6 +79,127 @@ const MemeEditor: React.FC = () => {
     }
   }
 
+  // Helper function to get canvas coordinates from mouse event
+  const getCanvasCoordinates = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return { x: 0, y: 0 }
+    
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    
+    return {
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY
+    }
+  }
+
+  // Helper function to check if a point is inside a text element
+  const getTextElementAt = (x: number, y: number): TextElement | null => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+
+    // Check text elements in reverse order (top to bottom)
+    for (let i = textElements.length - 1; i >= 0; i--) {
+      const textEl = textElements[i]
+      
+      // Set font to measure text
+      ctx.font = `${textEl.fontWeight} ${textEl.fontSize}px ${textEl.fontFamily}`
+      ctx.textAlign = textEl.align
+      
+      const textMetrics = ctx.measureText(textEl.text)
+      const textWidth = textMetrics.width
+      const textHeight = textEl.fontSize
+      
+      // Calculate text bounds based on alignment
+      let textLeft = textEl.x
+      let textTop = textEl.y - textHeight
+      let textRight = textEl.x + textWidth
+      let textBottom = textEl.y
+      
+      if (textEl.align === 'center') {
+        textLeft = textEl.x - textWidth / 2
+        textRight = textEl.x + textWidth / 2
+      } else if (textEl.align === 'right') {
+        textLeft = textEl.x - textWidth
+        textRight = textEl.x
+      }
+      
+      // Add some padding for easier clicking
+      const padding = 5
+      textLeft -= padding
+      textTop -= padding
+      textRight += padding
+      textBottom += padding
+      
+      if (x >= textLeft && x <= textRight && y >= textTop && y <= textBottom) {
+        return textEl
+      }
+    }
+    
+    return null
+  }
+
+  // Mouse event handlers for drag and drop
+  const handleCanvasMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const coords = getCanvasCoordinates(event)
+    const textElement = getTextElementAt(coords.x, coords.y)
+    
+    if (textElement) {
+      setIsDragging(true)
+      setDraggedTextId(textElement.id)
+      setSelectedTextId(textElement.id)
+      setDragOffset({
+        x: coords.x - textElement.x,
+        y: coords.y - textElement.y
+      })
+      
+      // Change cursor to indicate dragging
+      if (canvasRef.current) {
+        canvasRef.current.style.cursor = 'grabbing'
+      }
+    }
+  }
+
+  const handleCanvasMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const coords = getCanvasCoordinates(event)
+    
+    if (isDragging && draggedTextId) {
+      // Update the position of the dragged text element
+      const newX = coords.x - dragOffset.x
+      const newY = coords.y - dragOffset.y
+      
+      updateTextElement(draggedTextId, { x: newX, y: newY })
+    } else {
+      // Change cursor when hovering over text elements
+      const textElement = getTextElementAt(coords.x, coords.y)
+      if (canvasRef.current) {
+        canvasRef.current.style.cursor = textElement ? 'grab' : 'default'
+      }
+    }
+  }
+
+  const handleCanvasMouseUp = () => {
+    setIsDragging(false)
+    setDraggedTextId(null)
+    setDragOffset({ x: 0, y: 0 })
+    
+    // Reset cursor
+    if (canvasRef.current) {
+      canvasRef.current.style.cursor = 'default'
+    }
+  }
+
+  const handleCanvasMouseLeave = () => {
+    // Stop dragging if mouse leaves canvas
+    if (isDragging) {
+      handleCanvasMouseUp()
+    }
+  }
+
   const drawCanvas = () => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -102,6 +228,38 @@ const MemeEditor: React.FC = () => {
       ctx.font = `${textEl.fontWeight} ${textEl.fontSize}px ${textEl.fontFamily}`
       ctx.fillStyle = textEl.color
       ctx.textAlign = textEl.align
+      
+      // Add visual feedback for selected or dragged text
+      const isBeingDragged = isDragging && draggedTextId === textEl.id
+      const isSelected = selectedTextId === textEl.id
+      
+      if (isBeingDragged || isSelected) {
+        // Draw selection outline
+        ctx.save()
+        const textMetrics = ctx.measureText(textEl.text)
+        const textWidth = textMetrics.width
+        const textHeight = textEl.fontSize
+        
+        let textLeft = textEl.x
+        let textTop = textEl.y - textHeight
+        let textRight = textEl.x + textWidth
+        let textBottom = textEl.y
+        
+        if (textEl.align === 'center') {
+          textLeft = textEl.x - textWidth / 2
+          textRight = textEl.x + textWidth / 2
+        } else if (textEl.align === 'right') {
+          textLeft = textEl.x - textWidth
+          textRight = textEl.x
+        }
+        
+        // Draw selection rectangle
+        ctx.strokeStyle = isBeingDragged ? '#3b82f6' : '#6b7280'
+        ctx.lineWidth = 2
+        ctx.setLineDash(isBeingDragged ? [5, 5] : [])
+        ctx.strokeRect(textLeft - 3, textTop - 3, textWidth + 6, textHeight + 6)
+        ctx.restore()
+      }
       
       if (textEl.stroke) {
         ctx.strokeStyle = textEl.strokeColor
@@ -164,6 +322,10 @@ const MemeEditor: React.FC = () => {
                 height={canvasSize.height}
                 className="border border-gray-300 rounded-lg max-w-full h-auto"
                 style={{ maxHeight: '600px' }}
+                onMouseDown={handleCanvasMouseDown}
+                onMouseMove={handleCanvasMouseMove}
+                onMouseUp={handleCanvasMouseUp}
+                onMouseLeave={handleCanvasMouseLeave}
               />
             </div>
 
