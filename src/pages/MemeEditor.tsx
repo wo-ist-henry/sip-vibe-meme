@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Upload, Type, Download, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
+import { resizeImage } from '../utils'
 
 interface TextElement {
   id: string
@@ -41,7 +42,11 @@ const MemeEditor: React.FC = () => {
       const img = new Image()
       img.onload = () => {
         setImage(img)
-        setCanvasSize({ width: img.width, height: img.height })
+        // Resize image to fit within reasonable canvas bounds while maintaining aspect ratio
+        const maxWidth = 800
+        const maxHeight = 600
+        const resizedDimensions = resizeImage(img, maxWidth, maxHeight)
+        setCanvasSize(resizedDimensions)
       }
       img.src = URL.createObjectURL(file)
     }
