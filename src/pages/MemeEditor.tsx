@@ -28,13 +28,121 @@ const MemeEditor: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false)
   const [draggedTextId, setDraggedTextId] = useState<string | null>(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  
+  // Text editing state
+  const [isEditingText, setIsEditingText] = useState(false)
+  const [editingTextId, setEditingTextId] = useState<string | null>(null)
+  const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 })
+  const [textInputValue, setTextInputValue] = useState('')
 
   const fonts = ['Arial', 'Impact', 'Helvetica', 'Georgia', 'Times New Roman', 'Comic Sans MS']
   const colors = ['#ffffff', '#000000', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff']
 
+  // Separate rendering function for export (without selection borders)
+  const renderCanvasForExport = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // Draw image if present
+    if (image) {
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+    }
+
+    // Draw text elements without selection borders
+    textElements.forEach(textEl => {
+      ctx.font = `${textEl.fontWeight} ${textEl.fontSize}px ${textEl.fontFamily}`
+      ctx.fillStyle = textEl.color
+      ctx.textAlign = textEl.align
+      
+      if (textEl.stroke) {
+        ctx.strokeStyle = textEl.strokeColor
+        ctx.lineWidth = 2
+        ctx.strokeText(textEl.text, textEl.x, textEl.y)
+      }
+      
+      ctx.fillText(textEl.text, textEl.x, textEl.y)
+    })
+    
+    return canvas
+  }
+
+  // Main drawing function for preview (with selection borders)
+  const drawCanvas = React.useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // Draw image if present
+    if (image) {
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+    } else {
+      // Draw placeholder background
+      ctx.fillStyle = '#f3f4f6'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.fillStyle = '#9ca3af'
+      ctx.font = '24px Arial'
+      ctx.textAlign = 'center'
+      ctx.fillText('Upload an image to start', canvas.width / 2, canvas.height / 2)
+    }
+
+    // Draw text elements
+    textElements.forEach(textEl => {
+      ctx.font = `${textEl.fontWeight} ${textEl.fontSize}px ${textEl.fontFamily}`
+      ctx.fillStyle = textEl.color
+      ctx.textAlign = textEl.align
+      
+      // Add visual feedback for selected or dragged text
+      const isBeingDragged = isDragging && draggedTextId === textEl.id
+      const isSelected = selectedTextId === textEl.id
+      
+      if (isBeingDragged || isSelected) {
+        // Draw selection outline
+        ctx.save()
+        const textMetrics = ctx.measureText(textEl.text)
+        const textWidth = textMetrics.width
+        const textHeight = textEl.fontSize
+        
+        let textLeft = textEl.x
+        const textTop = textEl.y - textHeight
+        
+        if (textEl.align === 'center') {
+          textLeft = textEl.x - textWidth / 2
+        } else if (textEl.align === 'right') {
+          textLeft = textEl.x - textWidth
+        }
+        
+        // Draw selection rectangle
+        ctx.strokeStyle = isBeingDragged ? '#3b82f6' : '#6b7280'
+        ctx.lineWidth = 2
+        ctx.setLineDash(isBeingDragged ? [5, 5] : [])
+        ctx.strokeRect(textLeft - 3, textTop - 3, textWidth + 6, textHeight + 6)
+        ctx.restore()
+      }
+      
+      if (textEl.stroke) {
+        ctx.strokeStyle = textEl.strokeColor
+        ctx.lineWidth = 2
+        ctx.strokeText(textEl.text, textEl.x, textEl.y)
+      }
+      
+      ctx.fillText(textEl.text, textEl.x, textEl.y)
+    })
+  }, [image, textElements, isDragging, draggedTextId, selectedTextId])
+
   useEffect(() => {
     drawCanvas()
-  }, [image, textElements, isDragging, draggedTextId, selectedTextId])
+  }, [drawCanvas])
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -153,7 +261,7 @@ const MemeEditor: React.FC = () => {
     const coords = getCanvasCoordinates(event)
     const textElement = getTextElementAt(coords.x, coords.y)
     
-    if (textElement) {
+    if (textElement && !isEditingText) {
       setIsDragging(true)
       setDraggedTextId(textElement.id)
       setSelectedTextId(textElement.id)
@@ -167,6 +275,50 @@ const MemeEditor: React.FC = () => {
         canvasRef.current.style.cursor = 'grabbing'
       }
     }
+  }
+
+  // Handle double click for text editing
+  const handleCanvasDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const coords = getCanvasCoordinates(event)
+    const textElement = getTextElementAt(coords.x, coords.y)
+    
+    if (textElement) {
+      startTextEditing(textElement, coords)
+    }
+  }
+
+  const startTextEditing = (textElement: TextElement, coords: { x: number, y: number }) => {
+    setIsEditingText(true)
+    setEditingTextId(textElement.id)
+    setTextInputValue(textElement.text)
+    
+    // Convert canvas coordinates to screen coordinates for input positioning
+    const canvas = canvasRef.current
+    if (!canvas) return
+    
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = rect.width / canvas.width
+    const scaleY = rect.height / canvas.height
+    
+    setTextInputPosition({
+      x: rect.left + (coords.x * scaleX),
+      y: rect.top + (coords.y * scaleY) - 20 // Offset slightly above the text
+    })
+  }
+
+  const finishTextEditing = () => {
+    if (editingTextId && textInputValue.trim() !== '') {
+      updateTextElement(editingTextId, { text: textInputValue })
+    }
+    setIsEditingText(false)
+    setEditingTextId(null)
+    setTextInputValue('')
+  }
+
+  const cancelTextEditing = () => {
+    setIsEditingText(false)
+    setEditingTextId(null)
+    setTextInputValue('')
   }
 
   const handleCanvasMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -205,85 +357,20 @@ const MemeEditor: React.FC = () => {
     }
   }
 
-  const drawCanvas = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // Draw image if present
-    if (image) {
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
-    } else {
-      // Draw placeholder background
-      ctx.fillStyle = '#f3f4f6'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      ctx.fillStyle = '#9ca3af'
-      ctx.font = '24px Arial'
-      ctx.textAlign = 'center'
-      ctx.fillText('Upload an image to start', canvas.width / 2, canvas.height / 2)
-    }
-
-    // Draw text elements
-    textElements.forEach(textEl => {
-      ctx.font = `${textEl.fontWeight} ${textEl.fontSize}px ${textEl.fontFamily}`
-      ctx.fillStyle = textEl.color
-      ctx.textAlign = textEl.align
-      
-      // Add visual feedback for selected or dragged text
-      const isBeingDragged = isDragging && draggedTextId === textEl.id
-      const isSelected = selectedTextId === textEl.id
-      
-      if (isBeingDragged || isSelected) {
-        // Draw selection outline
-        ctx.save()
-        const textMetrics = ctx.measureText(textEl.text)
-        const textWidth = textMetrics.width
-        const textHeight = textEl.fontSize
-        
-        let textLeft = textEl.x
-        let textTop = textEl.y - textHeight
-        let textRight = textEl.x + textWidth
-        let textBottom = textEl.y
-        
-        if (textEl.align === 'center') {
-          textLeft = textEl.x - textWidth / 2
-          textRight = textEl.x + textWidth / 2
-        } else if (textEl.align === 'right') {
-          textLeft = textEl.x - textWidth
-          textRight = textEl.x
-        }
-        
-        // Draw selection rectangle
-        ctx.strokeStyle = isBeingDragged ? '#3b82f6' : '#6b7280'
-        ctx.lineWidth = 2
-        ctx.setLineDash(isBeingDragged ? [5, 5] : [])
-        ctx.strokeRect(textLeft - 3, textTop - 3, textWidth + 6, textHeight + 6)
-        ctx.restore()
-      }
-      
-      if (textEl.stroke) {
-        ctx.strokeStyle = textEl.strokeColor
-        ctx.lineWidth = 2
-        ctx.strokeText(textEl.text, textEl.x, textEl.y)
-      }
-      
-      ctx.fillText(textEl.text, textEl.x, textEl.y)
-    })
-  }
-
   const downloadMeme = () => {
     const canvas = canvasRef.current
     if (!canvas) return
 
+    // Render canvas without selection borders for export
+    renderCanvasForExport()
+    
     const link = document.createElement('a')
     link.download = 'meme.png'
     link.href = canvas.toDataURL()
     link.click()
+    
+    // Restore the preview rendering after download
+    drawCanvas()
   }
 
   const selectedText = textElements.find(el => el.id === selectedTextId)
@@ -320,7 +407,7 @@ const MemeEditor: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-center">
+            <div className="flex justify-center relative">
               <canvas
                 ref={canvasRef}
                 width={canvasSize.width}
@@ -331,7 +418,32 @@ const MemeEditor: React.FC = () => {
                 onMouseMove={handleCanvasMouseMove}
                 onMouseUp={handleCanvasMouseUp}
                 onMouseLeave={handleCanvasMouseLeave}
+                onDoubleClick={handleCanvasDoubleClick}
               />
+              
+              {/* Inline text editing overlay */}
+              {isEditingText && (
+                <input
+                  type="text"
+                  value={textInputValue}
+                  onChange={(e) => setTextInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      finishTextEditing()
+                    } else if (e.key === 'Escape') {
+                      cancelTextEditing()
+                    }
+                  }}
+                  onBlur={finishTextEditing}
+                  autoFocus
+                  className="absolute bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-lg z-10"
+                  style={{
+                    left: textInputPosition.x,
+                    top: textInputPosition.y,
+                    minWidth: '100px'
+                  }}
+                />
+              )}
             </div>
 
             <input
