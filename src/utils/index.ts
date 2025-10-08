@@ -249,3 +249,68 @@ export const shuffleArray = <T>(array: T[]): T[] => {
   }
   return newArray
 }
+
+/**
+ * Parse GIF file and extract frames
+ */
+export const parseGifFrames = (file: File): Promise<{
+  frames: { image: HTMLImageElement; delay: number }[]
+  width: number
+  height: number
+}> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    
+    reader.onload = () => {
+      try {
+        const arrayBuffer = reader.result as ArrayBuffer
+        const uint8Array = new Uint8Array(arrayBuffer)
+        
+        // Check if it's a GIF file
+        const header = String.fromCharCode(...uint8Array.slice(0, 6))
+        if (header !== 'GIF87a' && header !== 'GIF89a') {
+          reject(new Error('Not a valid GIF file'))
+          return
+        }
+        
+        // For now, we'll use a simple approach: create a single frame from the GIF
+        // In a full implementation, you'd use a GIF parsing library
+        const img = new Image()
+        img.onload = () => {
+          // Create canvas to extract frame
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')!
+          canvas.width = img.width
+          canvas.height = img.height
+          ctx.drawImage(img, 0, 0)
+          
+          // Create new image from canvas
+          const frameImg = new Image()
+          frameImg.onload = () => {
+            resolve({
+              frames: [{ image: frameImg, delay: 100 }], // Default delay
+              width: img.width,
+              height: img.height
+            })
+          }
+          frameImg.src = canvas.toDataURL()
+        }
+        img.onerror = () => reject(new Error('Failed to load GIF'))
+        img.src = URL.createObjectURL(file)
+        
+      } catch (error) {
+        reject(error)
+      }
+    }
+    
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+/**
+ * Check if file is a GIF
+ */
+export const isGifFile = (file: File): boolean => {
+  return file.type === 'image/gif'
+}
