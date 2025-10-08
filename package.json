@@ -16,6 +16,7 @@
     "gif.js": "^0.2.0",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.288.0",
+    "omggif": "^1.0.10",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.16.0"

@@ -69,6 +69,12 @@ export interface GifFrame {
   transition?: TransitionEffect
 }
 
+export interface GifTextElement extends TextElement {
+  startFrame: number
+  endFrame: number
+  duration?: number // in milliseconds, alternative to endFrame
+}
+
 export interface TransitionEffect {
   type: 'fade' | 'slide' | 'zoom' | 'none'
   duration: number
