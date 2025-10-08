@@ -251,7 +251,7 @@ export const shuffleArray = <T>(array: T[]): T[] => {
 }
 
 /**
- * Parse GIF file and extract frames
+ * Parse GIF file and extract frames using omggif
  */
 export const parseGifFrames = (file: File): Promise<{
   frames: { image: HTMLImageElement; delay: number }[]
@@ -261,7 +261,7 @@ export const parseGifFrames = (file: File): Promise<{
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const arrayBuffer = reader.result as ArrayBuffer
         const uint8Array = new Uint8Array(arrayBuffer)
@@ -272,31 +272,76 @@ export const parseGifFrames = (file: File): Promise<{
           reject(new Error('Not a valid GIF file'))
           return
         }
+
+        // Use omggif to parse the GIF
+        const { GifReader } = await import('omggif')
         
-        // For now, we'll use a simple approach: create a single frame from the GIF
-        // In a full implementation, you'd use a GIF parsing library
-        const img = new Image()
-        img.onload = () => {
-          // Create canvas to extract frame
+        try {
+          const reader = new GifReader(uint8Array)
+          const frames: { image: HTMLImageElement; delay: number }[] = []
+          
+          // Create canvas for frame extraction
           const canvas = document.createElement('canvas')
           const ctx = canvas.getContext('2d')!
-          canvas.width = img.width
-          canvas.height = img.height
-          ctx.drawImage(img, 0, 0)
+          canvas.width = reader.width
+          canvas.height = reader.height
           
-          // Create new image from canvas
-          const frameImg = new Image()
-          frameImg.onload = () => {
-            resolve({
-              frames: [{ image: frameImg, delay: 100 }], // Default delay
-              width: img.width,
-              height: img.height
+          // Extract all frames
+          for (let i = 0; i < reader.numFrames(); i++) {
+            const frameInfo = reader.frameInfo(i)
+            const imageData = ctx.createImageData(reader.width, reader.height)
+            
+            // Decode frame
+            reader.decodeAndBlitFrameRGBA(i, imageData.data)
+            
+            // Draw to canvas
+            ctx.putImageData(imageData, 0, 0)
+            
+            // Create image from canvas
+            const frameImage = new Image()
+            const framePromise = new Promise<void>((resolveFrame) => {
+              frameImage.onload = () => resolveFrame()
+            })
+            
+            frameImage.src = canvas.toDataURL()
+            await framePromise
+            
+            frames.push({
+              image: frameImage,
+              delay: (frameInfo.delay || 10) * 10 // Convert to milliseconds (GIF uses centiseconds)
             })
           }
-          frameImg.src = canvas.toDataURL()
+          
+          resolve({
+            frames,
+            width: reader.width,
+            height: reader.height
+          })
+          
+        } catch (parseError) {
+          console.warn('Failed to parse GIF with omggif, falling back to single frame:', parseError)
+          // Fallback to single frame approach
+          const img = new Image()
+          img.onload = () => {
+            const canvas = document.createElement('canvas')
+            const ctx = canvas.getContext('2d')!
+            canvas.width = img.width
+            canvas.height = img.height
+            ctx.drawImage(img, 0, 0)
+            
+            const frameImg = new Image()
+            frameImg.onload = () => {
+              resolve({
+                frames: [{ image: frameImg, delay: 500 }],
+                width: img.width,
+                height: img.height
+              })
+            }
+            frameImg.src = canvas.toDataURL()
+          }
+          img.onerror = () => reject(new Error('Failed to load GIF'))
+          img.src = URL.createObjectURL(file)
         }
-        img.onerror = () => reject(new Error('Failed to load GIF'))
-        img.src = URL.createObjectURL(file)
         
       } catch (error) {
         reject(error)

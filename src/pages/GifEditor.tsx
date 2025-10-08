@@ -314,31 +314,62 @@ const GifEditor: React.FC = () => {
     }
 
     try {
-      // Create a temporary canvas for each frame with text overlays
+      // Import gif.js dynamically
+      const GIF = (await import('gif.js')).default
+
+      // Create GIF encoder
+      const gif = new GIF({
+        workers: 2,
+        quality: gifSettings.quality,
+        width: gifSettings.width,
+        height: gifSettings.height,
+        repeat: gifSettings.repeat
+      })
+
+      // Create a temporary canvas for rendering frames with text overlays
       const tempCanvas = document.createElement('canvas')
       tempCanvas.width = gifSettings.width
       tempCanvas.height = gifSettings.height
       const tempCtx = tempCanvas.getContext('2d')!
 
-      // For now, create a downloadable image of the current frame
-      if (frames.length > 0) {
-        const currentFrame = frames[currentFrameIndex]
+      // Process each frame
+      frames.forEach((frame, frameIndex) => {
+        // Clear canvas
         tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height)
-        tempCtx.drawImage(currentFrame.image, 0, 0, tempCanvas.width, tempCanvas.height)
         
-        // Draw text elements for current frame
+        // Draw the frame image
+        tempCtx.drawImage(frame.image, 0, 0, tempCanvas.width, tempCanvas.height)
+        
+        // Draw text elements that should be visible on this frame
         textElements.forEach(textEl => {
-          if (currentFrameIndex >= textEl.startFrame && currentFrameIndex <= textEl.endFrame) {
+          if (frameIndex >= textEl.startFrame && frameIndex <= textEl.endFrame) {
             drawTextElement(tempCtx, textEl)
           }
         })
 
-        // Download the frame
+        // Add frame to GIF with proper delay
+        gif.addFrame(tempCanvas, { delay: frame.delay })
+      })
+
+      // Generate and download the GIF
+      gif.on('finished', function(blob: Blob) {
+        const url = URL.createObjectURL(blob)
         const link = document.createElement('a')
-        link.download = `gif-frame-${Date.now()}.png`
-        link.href = tempCanvas.toDataURL()
+        link.href = url
+        link.download = `animated-gif-${Date.now()}.gif`
+        document.body.appendChild(link)
         link.click()
-      }
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+      })
+
+      gif.on('progress', function(p: number) {
+        console.log('GIF generation progress:', Math.round(p * 100) + '%')
+      })
+
+      // Start rendering
+      gif.render()
+
     } catch (error) {
       console.error('Error generating GIF:', error)
       alert('Error generating GIF. Please try again.')
@@ -381,7 +412,7 @@ const GifEditor: React.FC = () => {
                   disabled={frames.length === 0}
                 >
                   <Download className="w-4 h-4" />
-                  <span>Export Frame</span>
+                  <span>Generate GIF</span>
                 </button>
               </div>
             </div>
