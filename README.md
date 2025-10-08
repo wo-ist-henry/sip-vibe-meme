@@ -115,6 +115,23 @@ src/
 - [ ] AI-powered meme suggestions
 - [ ] Video meme support
 
+## 🚀 Deployment
+
+This project is automatically deployed using GitHub Actions:
+
+### 🌐 Production Deployment
+- **Main Site**: Automatically deployed to [GitHub Pages](https://wo-ist-henry.github.io/sip-vibe-meme/) when changes are pushed to the `main` branch
+- **Workflow**: `.github/workflows/deploy-main.yml`
+
+### 🔍 PR Preview Deployments
+- **Preview URLs**: Each Pull Request gets its own preview deployment at `https://wo-ist-henry.github.io/sip-vibe-meme/pr-{number}/`
+- **Automatic Updates**: Previews are updated automatically when new commits are pushed to the PR
+- **Cleanup**: Preview deployments are automatically removed when PRs are closed
+- **Workflow**: `.github/workflows/deploy-pr-preview.yml`
+
+### 🔧 Local Development
+For local development, the site runs at `http://localhost:3000` with proper asset paths configured automatically.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -124,6 +141,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
+
+Each PR will automatically get a preview deployment where you can test your changes before they're merged.
 
 ## 📄 License
 

@@ -246,16 +246,12 @@ const MemeEditor: React.FC = () => {
         const textHeight = textEl.fontSize
         
         let textLeft = textEl.x
-        let textTop = textEl.y - textHeight
-        let textRight = textEl.x + textWidth
-        let textBottom = textEl.y
+        const textTop = textEl.y - textHeight
         
         if (textEl.align === 'center') {
           textLeft = textEl.x - textWidth / 2
-          textRight = textEl.x + textWidth / 2
         } else if (textEl.align === 'right') {
           textLeft = textEl.x - textWidth
-          textRight = textEl.x
         }
         
         // Draw selection rectangle
